@@ -56,7 +56,7 @@ public:
 	static MObject aOutZ;
 
 	// inputs
-	static MObject aRotateOrder;
+	static MObject aInverseParentMatrix;
 	static MObject aInTangent;
 	static MObject aPrevVertex;
 	static MObject aCurrentVertex;

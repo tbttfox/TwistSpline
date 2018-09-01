@@ -59,6 +59,7 @@ MObject TwistTangentNode::aOutX;
 MObject TwistTangentNode::aOutY;
 MObject TwistTangentNode::aOutZ;
 
+MObject TwistTangentNode::aInverseParentMatrix;
 MObject TwistTangentNode::aInTangent;
 MObject TwistTangentNode::aPrevVertex;
 MObject TwistTangentNode::aCurrentVertex;
@@ -119,6 +120,12 @@ MStatus TwistTangentNode::initialize() {
 	addAttribute(aOutLinearTarget);
 
 	//----------------- Matrices -----------------
+	aInverseParentMatrix = mAttr.create("inverseParentMatrix", "ipm");
+	mAttr.setHidden(true);
+	mAttr.setWritable(true);
+	mAttr.setDefault(MMatrix::identity);
+	addAttribute(aInverseParentMatrix);
+	
 	aInTangent = mAttr.create("inTangent", "it");
 	mAttr.setHidden(true);
 	mAttr.setDefault(MMatrix::identity);
@@ -168,92 +175,69 @@ MStatus TwistTangentNode::initialize() {
 	nAttr.setKeyable(true);
 	addAttribute(aWeight);
 	
-	attributeAffects(aPrevVertex, aSmoothTan);
-	attributeAffects(aPrevVertex, aSmoothTanX);
-	attributeAffects(aPrevVertex, aSmoothTanY);
-	attributeAffects(aPrevVertex, aSmoothTanZ);
-	attributeAffects(aCurrentVertex, aSmoothTan);
-	attributeAffects(aCurrentVertex, aSmoothTanX);
-	attributeAffects(aCurrentVertex, aSmoothTanY);
-	attributeAffects(aCurrentVertex, aSmoothTanZ);
-	attributeAffects(aNextVertex, aSmoothTan);
-	attributeAffects(aNextVertex, aSmoothTanX);
-	attributeAffects(aNextVertex, aSmoothTanY);
-	attributeAffects(aNextVertex, aSmoothTanZ);
-	attributeAffects(aWeight, aSmoothTan);
-	attributeAffects(aWeight, aSmoothTanX);
-	attributeAffects(aWeight, aSmoothTanY);
-	attributeAffects(aWeight, aSmoothTanZ);
+	// Affects code
+	std::vector<MObject *> smoothAffectors, smoothAffecteds;
+	std::vector<MObject *> linearAffectors, linearAffecteds;
+	std::vector<MObject *> outAffectors, outAffecteds;
 
-	attributeAffects(aSmooth, aOutLinearTarget);
-	attributeAffects(aSmooth, aOutLinearTargetX);
-	attributeAffects(aSmooth, aOutLinearTargetY);
-	attributeAffects(aSmooth, aOutLinearTargetZ);
-	attributeAffects(aSmoothTan, aOutLinearTarget);
-	attributeAffects(aSmoothTan, aOutLinearTargetX);
-	attributeAffects(aSmoothTan, aOutLinearTargetY);
-	attributeAffects(aSmoothTan, aOutLinearTargetZ);
-	attributeAffects(aCurrentVertex, aOutLinearTarget);
-	attributeAffects(aCurrentVertex, aOutLinearTargetX);
-	attributeAffects(aCurrentVertex, aOutLinearTargetY);
-	attributeAffects(aCurrentVertex, aOutLinearTargetZ);
-	attributeAffects(aWeight, aOutLinearTarget);
-	attributeAffects(aWeight, aOutLinearTargetX);
-	attributeAffects(aWeight, aOutLinearTargetY);
-	attributeAffects(aWeight, aOutLinearTargetZ);
-	attributeAffects(aPrevVertex, aOutLinearTarget);
-	attributeAffects(aPrevVertex, aOutLinearTargetX);
-	attributeAffects(aPrevVertex, aOutLinearTargetY);
-	attributeAffects(aPrevVertex, aOutLinearTargetZ);
-	attributeAffects(aCurrentVertex, aOutLinearTarget);
-	attributeAffects(aCurrentVertex, aOutLinearTargetX);
-	attributeAffects(aCurrentVertex, aOutLinearTargetY);
-	attributeAffects(aCurrentVertex, aOutLinearTargetZ);
-	attributeAffects(aNextVertex, aOutLinearTarget);
-	attributeAffects(aNextVertex, aOutLinearTargetX);
-	attributeAffects(aNextVertex, aOutLinearTargetY);
-	attributeAffects(aNextVertex, aOutLinearTargetZ);
+	smoothAffectors.push_back(&aPrevVertex);
+	smoothAffectors.push_back(&aCurrentVertex);
+	smoothAffectors.push_back(&aNextVertex);
+	smoothAffectors.push_back(&aWeight);
 
-	attributeAffects(aInTangent, aOut);
-	attributeAffects(aInTangent, aOutX);
-	attributeAffects(aInTangent, aOutY);
-	attributeAffects(aInTangent, aOutZ);
-	attributeAffects(aCurrentVertex, aOut);
-	attributeAffects(aCurrentVertex, aOutX);
-	attributeAffects(aCurrentVertex, aOutY);
-	attributeAffects(aCurrentVertex, aOutZ);
-	attributeAffects(aSmoothTan, aOut);
-	attributeAffects(aSmoothTan, aOutX);
-	attributeAffects(aSmoothTan, aOutY);
-	attributeAffects(aSmoothTan, aOutZ);
-	attributeAffects(aNextLinearTarget, aOut);
-	attributeAffects(aNextLinearTarget, aOutX);
-	attributeAffects(aNextLinearTarget, aOutY);
-	attributeAffects(aNextLinearTarget, aOutZ);
-	attributeAffects(aSmooth, aOut);
-	attributeAffects(aSmooth, aOutX);
-	attributeAffects(aSmooth, aOutY);
-	attributeAffects(aSmooth, aOutZ);
-	attributeAffects(aAuto, aOut);
-	attributeAffects(aAuto, aOutX);
-	attributeAffects(aAuto, aOutY);
-	attributeAffects(aAuto, aOutZ);
-	attributeAffects(aWeight, aOut);
-	attributeAffects(aWeight, aOutX);
-	attributeAffects(aWeight, aOutY);
-	attributeAffects(aWeight, aOutZ);
-	attributeAffects(aPrevVertex, aOut);
-	attributeAffects(aPrevVertex, aOutX);
-	attributeAffects(aPrevVertex, aOutY);
-	attributeAffects(aPrevVertex, aOutZ);
-	attributeAffects(aCurrentVertex, aOut);
-	attributeAffects(aCurrentVertex, aOutX);
-	attributeAffects(aCurrentVertex, aOutY);
-	attributeAffects(aCurrentVertex, aOutZ);
-	attributeAffects(aNextVertex, aOut);
-	attributeAffects(aNextVertex, aOutX);
-	attributeAffects(aNextVertex, aOutY);
-	attributeAffects(aNextVertex, aOutZ);
+	smoothAffecteds.push_back(&aSmoothTan);
+	smoothAffecteds.push_back(&aSmoothTanX);
+	smoothAffecteds.push_back(&aSmoothTanY);
+	smoothAffecteds.push_back(&aSmoothTanZ);
+
+	for (auto s : smoothAffectors) {
+		for (auto t : smoothAffecteds) {
+			attributeAffects(*s, *t);
+		}
+	}
+	
+	linearAffectors.push_back(&aSmooth);
+	linearAffectors.push_back(&aSmoothTan);
+	linearAffectors.push_back(&aCurrentVertex);
+	linearAffectors.push_back(&aWeight);
+	linearAffectors.push_back(&aPrevVertex);
+	linearAffectors.push_back(&aCurrentVertex);
+	linearAffectors.push_back(&aNextVertex);
+
+	linearAffecteds.push_back(&aOutLinearTarget);
+	linearAffecteds.push_back(&aOutLinearTargetX);
+	linearAffecteds.push_back(&aOutLinearTargetY);
+	linearAffecteds.push_back(&aOutLinearTargetZ);
+
+	for (auto s : linearAffectors) {
+		for (auto t : linearAffecteds) {
+			attributeAffects(*s, *t);
+		}
+	}
+
+	outAffectors.push_back(&aInverseParentMatrix);
+	outAffectors.push_back(&aInTangent);
+	outAffectors.push_back(&aCurrentVertex);
+	outAffectors.push_back(&aSmoothTan);
+	outAffectors.push_back(&aNextLinearTarget);
+	outAffectors.push_back(&aSmooth);
+	outAffectors.push_back(&aAuto);
+	outAffectors.push_back(&aWeight);
+	outAffectors.push_back(&aPrevVertex);
+	outAffectors.push_back(&aCurrentVertex);
+	outAffectors.push_back(&aNextVertex);
+
+	outAffecteds.push_back(&aOut);
+	outAffecteds.push_back(&aOutX);
+	outAffecteds.push_back(&aOutY);
+	outAffecteds.push_back(&aOutZ);
+
+	for (auto s : outAffectors) {
+		for (auto t : outAffecteds) {
+			attributeAffects(*s, *t);
+		}
+	}
+
 	return MS::kSuccess;
 }
 
@@ -326,6 +310,9 @@ MStatus	TwistTangentNode::compute(const MPlug& plug, MDataBlock& data) {
 		MTransformationMatrix inTMat(inH.asMatrix());
 		MVector inTfm = inTMat.getTranslation(MSpace::kWorld);
 
+		MDataHandle invParH = data.inputValue(aInverseParentMatrix);
+		MMatrix invParMat = inH.asMatrix();
+
 		MDataHandle curH = data.inputValue(aCurrentVertex);
 		MTransformationMatrix curTMat(curH.asMatrix());
 		MVector curTfm = curTMat.getTranslation(MSpace::kWorld);
@@ -362,9 +349,15 @@ MStatus	TwistTangentNode::compute(const MPlug& plug, MDataBlock& data) {
 		result = freeLeg + autoTan*(result - freeLeg); // LERP with the free tangent
 		result += curTfm;
 
-		MDataHandle matH = data.outputValue(aOut);
-		matH.setMVector(result);
-		matH.setClean();
+		MPoint x(result);
+
+		MPoint test = x * invParMat;
+		//result = test;
+		MVector bob(test);
+
+		MDataHandle outH = data.outputValue(aOut);
+		outH.setMVector(bob);
+		outH.setClean();
 	}
 	else {
 		return MS::kUnknownParameter;
