@@ -33,6 +33,7 @@ SOFTWARE.
 #include <maya/MObjectArray.h>
 #include <maya/MPxData.h>
 #include <maya/MArrayDataBuilder.h>
+#include <maya/MEulerRotation.h>
 #include <maya/MQuaternion.h>
 
 #include <maya/MMatrix.h>
@@ -44,7 +45,6 @@ SOFTWARE.
 #include <vector>
 #include "twistSpline.h"
 #include "twistSplineData.h"
-#include "decomposeRotation.h"
 
 
 #define ROTATE_ORDER_XYZ        0
@@ -76,7 +76,6 @@ MObject     riderConstraint::aParams;
 
 // output
 MObject     riderConstraint::aOutputs;
-	MObject     riderConstraint::aOutMat;
 	MObject     riderConstraint::aTranslate;
 	MObject     riderConstraint::aTranslateX;
 	MObject     riderConstraint::aTranslateY;
@@ -187,12 +186,6 @@ MStatus riderConstraint::initialize() {
 	CHECKSTAT("aParams");
 
 	// Output: Matrices
-	aOutMat = mAttr.create("matrix", "mat", MFnMatrixAttribute::kDouble, &status);
-	CHECKSTAT("aMatrix");
-	mAttr.setHidden(true);
-	mAttr.setWritable(false);
-	mAttr.setStorable(false);
-
 	aTranslateX = nAttr.create("translateX", "tx", MFnNumericData::kDouble, 0.0, &status);
 	CHECKSTAT("aTranslateX");
 	nAttr.setWritable(false);
@@ -262,7 +255,6 @@ MStatus riderConstraint::initialize() {
 	cAttr.setHidden(true);
 	cAttr.setArray(true);
 	cAttr.setUsesArrayDataBuilder(true);
-	cAttr.addChild(aOutMat);
 	cAttr.addChild(aTranslate);
 	cAttr.addChild(aRotate);
 	cAttr.addChild(aScale);
@@ -288,7 +280,6 @@ MStatus riderConstraint::initialize() {
 	iobjs.push_back(&aNormalize);
 	iobjs.push_back(&aNormValue);
 
-	oobjs.push_back(&aOutMat);
 	oobjs.push_back(&aOutputs);
 	oobjs.push_back(&aTranslate);
 	oobjs.push_back(&aRotate);
@@ -316,8 +307,7 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 	if (plug == aOutputs || 
 		plug == aScale || plug == aScaleX || plug == aScaleY || plug == aScaleZ ||
 		plug == aRotate || plug == aRotateX || plug == aRotateY || plug == aRotateZ ||
-		plug == aTranslate || plug == aTranslateX || plug == aTranslateY || plug == aTranslateZ ||
-		plug == aOutMat
+		plug == aTranslate || plug == aTranslateX || plug == aTranslateY || plug == aTranslateZ
 		) { 
 		// I can optimize things a lot more if we do everything at once
 		// So, whatever plug is asked for, just compute it all
@@ -439,6 +429,12 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 			std::vector<MPoint> ttrans, tscales;
 			std::vector<MQuaternion> tquats;
 			std::vector<double> ttwists;
+
+			ttrans.reserve(params.size());
+			tscales.reserve(params.size());
+			tquats.reserve(params.size());
+			ttwists.reserve(params.size());
+
 			for (size_t pIdx = 0; pIdx<params.size(); ++pIdx) {
 				// Calculate the transforms
 				MVector tan, norm, binorm;
@@ -492,9 +488,9 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 					scale += scales[sIdx][pIdx] * w;
 					twist += twists[sIdx][pIdx] * w;
 				}
-				otrans.push_back(tran);
-				oscales.push_back(scale);
-				otwists.push_back(twist);
+				otrans.push_back(std::move(tran));
+				oscales.push_back(std::move(scale));
+				otwists.push_back(std::move(twist));
 			}
 
 			// Weight the quaternions
@@ -509,7 +505,7 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 				}
 				MQuaternion xt(otwists[pIdx], MVector(1.0, 0.0, 0.0));
 				prev = xt * prev;
-				oquats.push_back(prev);
+				oquats.push_back(std::move(prev));
 			}
 		}
 		else if (splines.size() == 1) {
@@ -529,7 +525,6 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 		for (size_t pIdx = 0; pIdx < params.size(); ++pIdx) {
 
 			MDataHandle outH = builder.addElement(pIdx);
-			MDataHandle matH = outH.child(aOutMat);
 			MDataHandle tranH = outH.child(aTranslate);
 			MDataHandle rotH = outH.child(aRotate);
 			MDataHandle sclH = outH.child(aScale);
@@ -539,20 +534,13 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 			MMatrix qmat = oquats[pIdx].asMatrix() * invPar;
 			MPoint &scale = oscales[pIdx];
 
-			// Setting scale doesn't take an mvector or mpoint, only double[3]
-			double scl[3], rot[3];
-			scl[0] = scale[0]; scl[1] = scale[1]; scl[2] = scale[2];
+			// Ugh, the only way to convert to quat to euler *with a given rot order*
+			// is expanding to matrix and decomposing
+			MEulerRotation meu = MEulerRotation::decompose(qmat, (MEulerRotation::RotationOrder)order);
 						
-			MTransformationMatrix tmat(qmat);
-			tmat.setTranslation(tran, MSpace::kWorld);
-			tmat.setScale(scl, MSpace::kWorld);
-
-			decomposeRotation(order, rot, tmat);
-
-			matH.setMMatrix(tmat.asMatrix());
 			tranH.set3Double(tran[0], tran[1], tran[2]);
-			rotH.set3Double(rot[0], rot[1], rot[2]);
-			sclH.set3Double(scl[0], scl[1], scl[2]);
+			rotH.set3Double(meu.x, meu.y, meu.z);
+			sclH.set3Double(scale[0], scale[1], scale[2]);
 		}
 		outHandle.set(builder);
 		outHandle.setAllClean();

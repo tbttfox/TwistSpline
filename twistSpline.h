@@ -134,7 +134,9 @@ void multiLinearIndexes(const std::vector<Float> &params, const std::vector<Floa
 }
 
 
-
+// Prototype
+template <typename PointArray, typename Point, typename VectorArray, typename Vector, typename QuatArray, typename Quat, typename Float = double>
+class TwistSpline;
 
 // This class doesn't own the Point objects, they just look at them
 // This class should not do any memory management as it will be
@@ -170,6 +172,25 @@ public:
 		buildDverts();
 		buildLut();
 	}
+
+	TwistSplineSegment(TwistSplineSegment const &old, std::array<Point*, 4> &verts, std::array<Quat*, 4> &quats){
+		this->d1verts = old.d1verts;
+		this->d2verts = old.d2verts;
+		this->points = old.points;
+		this->tangents = old.tangents;
+		this->rnormals = old.rnormals;
+		this->rbinormals = old.rbinormals;
+		this->tnormals = old.tnormals;
+		this->tbinormals = old.tbinormals;
+		this->twistVals = old.twistVals;
+		this->units = old.units;
+		this->iNorm = old.iNorm;
+		this->sampleLengths = old.sampleLengths;
+		this->lutSteps = old.lutSteps;
+		this->verts = verts;
+		this->quats = quats;
+	}
+
 	~TwistSplineSegment() {}
 
 	size_t getLutSteps() { return lutSteps; }
@@ -527,6 +548,36 @@ public:
 	std::vector<Float> getRemap() const { return remap; }
 	Float getTotalLength() const { return totalLength; }
 	
+
+
+	// copy-ish constructor
+	TwistSpline(TwistSpline const &old){
+		this->verts = old.verts;
+		this->quats = old.quats;
+		this->lockPositions = old.lockPositions;
+		this->lockValues = old.lockValues;
+		this->userTwists = old.userTwists;
+		this->twistLocks = old.twistLocks;
+		this->orientLocks = old.orientLocks;
+		this->remap = old.remap;
+		this->projSteps = old.projSteps;
+		this->lutSteps = old.lutSteps;
+		this->totalLength = old.totalLength;
+		// specifically skipping the kdtree for now. Maybe later
+
+		size_t numSegs = ((size(verts) - 1) / 3);
+		segments.resize(numSegs);
+		for (size_t i=0; i<numSegs; ++i){
+			std::array<Point*, 4> vv;
+			std::array<Quat*, 4> qq;
+			vv = {&(verts[3*i]), &(verts[3*i + 1]), &(verts[3*i + 2]), &(verts[3*i + 3])};
+			qq = {&(quats[3*i]), &(quats[3*i + 1]), &(quats[3*i + 2]), &(quats[3*i + 3])};
+			segments[i] = std::unique_ptr<TwistSplineSegment<PointArray, Point, VectorArray, Vector, QuatArray, Quat, Float>>(
+				new TwistSplineSegment<PointArray, Point, VectorArray, Vector, QuatArray, Quat, Float>(*(old.segments[i]), vv, qq)
+			); 
+		}
+	}
+
 	PointArray getPoints()const {
 		PointArray pLut;
 		resize(pLut, segments.size() * (lutSteps + 1));
