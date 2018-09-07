@@ -454,9 +454,9 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 				}
 
 				spline->matrixAtParam(p, tan, norm, binorm, tran, scale, twist, twisted);
-				ttrans.push_back(tran);
-				tscales.push_back(scale);
-				ttwists.push_back(twist);
+				ttrans.push_back(std::move(tran));
+				tscales.push_back(std::move(scale));
+				ttwists.push_back(std::move(twist));
 
 				// fill the matrix
 				double mat[4][4];
@@ -466,7 +466,7 @@ MStatus riderConstraint::compute(const MPlug& plug, MDataBlock& data) {
 				mat[0][3] = 0.0;    mat[1][3] = 0.0;     mat[2][3] = 0.0;       mat[3][3] = 1.0;
 				MQuaternion q;
 				q = MMatrix(mat);
-				tquats.push_back(q);
+				tquats.push_back(std::move(q));
 			}
 			trans.push_back(ttrans);
 			scales.push_back(tscales);

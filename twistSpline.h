@@ -169,6 +169,18 @@ public:
 		quats[0] = q0; quats[1] = q1; quats[2] = q2; quats[3] = q3;
 		this->iNorm = iNorm;
 		this->lutSteps = lutSteps;
+
+		// resize the point-wise arrays
+		size_t pointSteps = lutSteps + 1;
+		resize(points, pointSteps);
+		resize(tangents, pointSteps);
+		resize(rnormals, pointSteps);
+		resize(rbinormals, pointSteps);
+		resize(sampleLengths, pointSteps);
+
+		// resize the line-wise arrays
+		resize(units, lutSteps);
+
 		buildDverts();
 		buildLut();
 	}
@@ -294,17 +306,6 @@ public:
 		// So it follows that stepping to der1 values is just some linear function of the der2 values
 		// Same with the output. There's complicated proof, but I think of it like forces pulling each other around
 
-		// resize the point-wise arrays
-		size_t pointSteps = lutSteps + 1;
-		resize(points, pointSteps);
-		resize(tangents, pointSteps);
-		resize(rnormals, pointSteps);
-		resize(rbinormals, pointSteps);
-		resize(sampleLengths, pointSteps);
-
-		// resize the line-wise arrays
-		resize(units, lutSteps);
-
 		// Do the pre-calculations
 		Vector a = (*(verts[3])) - 3 * (*(verts[2])) + 3 * (*(verts[1])) - (*(verts[0]));
 		Vector b = 3 * (*(verts[2])) - 6 * (*(verts[1])) + 3 * (*(verts[0]));
@@ -327,6 +328,7 @@ public:
 		Vector td2 = 6 * a*h2;
 
 		// Wonderfully simple loop
+		size_t pointSteps = lutSteps + 1;
 		for (size_t i = 1; i < pointSteps; i++) {
 			d += fd;
 			fd += fd2;
