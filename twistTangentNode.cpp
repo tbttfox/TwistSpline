@@ -244,46 +244,25 @@ MStatus TwistTangentNode::initialize() {
 MStatus	TwistTangentNode::compute(const MPlug& plug, MDataBlock& data) {
 	// Don't care what plug it is, just compute everything and set the outputs clean
 	MStatus status;
-	// TODO: do this stuff with mVectors or mPoints instead of mMatrixes
 	if (plug == aSmoothTan || plug == aSmoothTanX || plug == aSmoothTanY || plug == aSmoothTanZ) {
 		// Calculate the weighted smooth tangents explicitly
 		// Get the first matrix
 		MDataHandle preH = data.inputValue(aPrevVertex);
 		MDataHandle curH = data.inputValue(aCurrentVertex);
-		MDataHandle nextH = data.inputValue(aNextVertex);
+		MDataHandle nxtH = data.inputValue(aNextVertex);
 		MDataHandle weightH = data.inputValue(aWeight);
 
 		MTransformationMatrix preTMat(preH.asMatrix());
 		MTransformationMatrix curTMat(curH.asMatrix());
-		MTransformationMatrix nextTMat(nextH.asMatrix());
+		MTransformationMatrix nxtTMat(nextH.asMatrix());
 
 		MVector preTfm = preTMat.getTranslation(MSpace::kWorld);
 		MVector curTfm = curTMat.getTranslation(MSpace::kWorld);
-		MVector nextTfm = nextTMat.getTranslation(MSpace::kWorld);
+		MVector nxtTfm = netTMat.getTranslation(MSpace::kWorld);
 		double weight = weightH.asDouble();
 
-		MVector preLeg = preTfm - curTfm;
-		MVector nextLeg = nextTfm - curTfm;
-		double preLegLen = preLeg.length();
-		double nextLegLen = nextLeg.length();
+		MVector smo = smoothTangent(preTfm, curTfm, nxtTfm, weight);
 
-		// We're pointing our tangent from pre->post 
-		// This is an auto-tan point, so get the half-angle between
-		// the perpendiculars of the legs
-		MVector smo;
-		MVector preNorm = preLeg / preLegLen;
-		MVector postNorm = nextLeg / nextLegLen;
-		double dot = preNorm * postNorm;
-		if (abs(dot) >= 0.999999999 || preLegLen == 0.0) { // Linear case
-			smo = nextLeg / 3.0;
-		}
-		else { // Nonlinear
-			MVector bin = preNorm ^ postNorm;
-			bin.normalize();
-			smo = ((bin ^ preNorm) + (bin ^ postNorm)).normal();
-			smo *= nextLegLen / 3.0;
-		}
-		smo *= weight;
 		MDataHandle matH = data.outputValue(aSmoothTan);
 		matH.setMVector(smo);
 		matH.setClean();
@@ -326,22 +305,12 @@ MStatus	TwistTangentNode::compute(const MPlug& plug, MDataBlock& data) {
 		MDataHandle smoothH = data.inputValue(aSmooth);
 		double smooth = smoothH.asDouble();
 
-		MDataHandle weightH = data.inputValue(aWeight);
-		double weight = weightH.asDouble();
-
 		MDataHandle autoH = data.inputValue(aAuto);
 		double autoTan = autoH.asDouble();
 
-		MVector result;
-		MVector lin = (nlt - curTfm).normal() * smo.length();
-
-		result = (1.0 - smooth) * lin + smooth * smo;
-
-		MVector freeLeg = inTfm - curTfm;
-		result = (1.0 - autoTan) * freeLeg + autoTan * result; // LERP with the free tangent
-		result += curTfm;
-
-		MPoint out = MPoint(result) * invParMat;
+		MVector outv = userTangent(userTfm, curTfm, smoothTfm, nlt, smooth, autoTan);
+		MPoint out(outv);
+		out *= invParMat;
 
 		MDataHandle outH = data.outputValue(aOut);
 		outH.set3Double(out[0], out[1], out[2]);

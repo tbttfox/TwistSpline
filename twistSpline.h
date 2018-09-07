@@ -64,6 +64,45 @@ inline Vector cross(const Vector &a, const Vector &b) {
 }
 
 
+// Functions for solving automatic tangents
+template <typename Vector, typename Float = double>
+Vector smoothTangent(const Vector &preTfm, const Vector &curTfm, const Vector &nxtTfm, Float weight){
+	// This code calculates only the smooth tangent.
+	// It doesn't do anything about the linear, or user tans
+	Vector smo;
+	Vector preLeg = preTfm - curTfm;
+	Vector nextLeg = nxtTfm - curTfm;
+	Float preLegLen = length(preLeg);
+	Float nextLegLen = length(nextLeg);
+	Vector preNorm = preLeg / preLegLen;
+	Vector postNorm = nextLeg / nextLegLen;
+
+	Float dprod = dot<Vector, Float>(preNorm, postNorm);
+	if (abs(dprod) >= 0.999999999 || preLegLen == 0.0) { // Linear case
+		smo = nextLeg / 3.0;
+	}
+	else { // Nonlinear
+		Vector bin = normalized<Vector, Float>(cross(preNorm, postNorm));
+		smo = normlaized<Vector, Float>(cross(bin, preNorm) + cross(bin, postNorm));
+		smo *= nextLegLen / 3.0;
+	}
+	smo *= weight;
+	return smo;
+}
+
+template <typename Vector, typename Float = double>
+Vector userTangent(
+		const Vector &userTfm, const Vector &curTfm,
+		const Vector &smoothTfm, const Vector &nlt,
+		Float smooth, Float autoTan
+	){
+	Vector lin = normalized(nlt - curTfm) * length(smoothTfm);
+	Vector result = (1.0 - smooth) * lin + smooth * smoothTfm;
+	Vector freeLeg = userTfm - curTfm;
+	result = (1.0 - autoTan) * freeLeg + autoTan * result;
+	result += curTfm;
+	return result;
+}
 
 // A helper function for quickly finding an index and segment percentage for an input tValue
 template <typename Float=double>
@@ -103,29 +142,26 @@ void linearIndex(Float t, const std::vector<Float> &samp, Float &segT, size_t &s
 			++segIdx;
 		}
 	}
-
 }
-
-
 
 template <typename Float = double>
 void multiLinearIndexes(const std::vector<Float> &params, const std::vector<Float> &samp, std::vector<Float> &segTs, std::vector<size_t> &segIdxs) {
 	// The params aren't necessarily sorted, so to do the "merge", I have to sort them first.
-	// but, so I can 'unsort' them, I'm doing this the annoying way, by index
+	// but, so I can 'unsort' them later, I'm doing this the annoying way, by index
 	std::vector<size_t> pOrder(params.size());
-	std::iota(pOrder.begin(), pOrder.end(), 0);
+	std::iota(pOrder.begin(), pOrder.end(), 0); // like python's range()
 	sort(pOrder.begin(), pOrder.end(), [&v](size_t i1, size_t i2) {return v[i1] < v[i2]; });
 
 	size_t segIdx = 0;
 	segTs.resize(params.size());
 	segIdxs.resize(params.size());
-	bool capped = false;
+	bool capped = false; // are we past the end of the remap param values?
 	for (size_t i = 0; i < params.size(); ++i) {
 		Float t = params[pOrder[i]];
 		if (!capped && t >= remap[segIdx + 1]) {
-			if (segIdx + 1 >= params.size()) {
-				capped = true;
-			}
+			// If I'm past the end of this segment, go on to the next
+			// unless I'm at the very end, in which case, cap me
+			if (segIdx + 1 >= params.size()) capped = true;
 			++segIdx;
 		}
 		segIdxs[pOrder[i]] = segIdx;
@@ -429,59 +465,94 @@ public:
 
 		tran = compute(segT);
 		tan = normalized(tangent(segT));
-#if 0
-		// This could be done by lerp+normalization
-		// Bad (can end up over-extrapolating in extreme cases)
-		auto x1 = normals[i];
-		auto d = normals[i + 1] - x1;
-		Float tt = dot<Vector, Float>(x1, tan);
-		Float bb = dot<Vector, Float>(d, tan);
-		if (abs(bb) < 1.0e-15) {
-			norm = normals[i];
-		}
-		else {
-			norm = normalized(x1 - d * (tt / bb));
-		}
-		binorm = normalized(cross(tan, norm));
-#elif 0
-		// Or by the double reflection method
-		// Better (Haven't found an issue yet)
-		Vector preNorm, postNorm;
-		{
-			Vector v1 = tran - points[i];
-			Float c1 = 2.0 / dot<Vector, Float>(v1, v1);
-			Vector tLi = tangents[i] - c1 * dot<Vector, Float>(v1, tangents[i]) * v1;
-			Vector v2 = tangents[i + 1] - tLi;
-			Float c2 = 2.0 / dot<Vector, Float>(v2, v2);
-			Vector rLi = normals[i] - c1 * dot<Vector, Float>(v1, normals[i]) * v1;
-			preNorm = rLi - c2 * dot<Vector, Float>(v2, rLi) * v2;
-		}
-		{
-			size_t e = i + 1;
-			Vector v1 = tran - points[e];
-			Float c1 = 2.0 / dot<Vector, Float>(v1, v1);
-			Vector tLi = tangents[e] - c1 * dot<Vector, Float>(v1, tangents[e]) * v1;
-			Vector v2 = tangents[i] - tLi;
-			Float c2 = 2.0 / dot<Vector, Float>(v2, v2);
-			Vector rLi = normals[e] - c1 * dot<Vector, Float>(v1, normals[e]) * v1;
-			postNorm = rLi - c2 * dot<Vector, Float>(v2, rLi) * v2;
-		}
-		norm = normalized((1-t) * preNorm + t * postNorm);
-		binorm = normalized(cross(tan, norm));
-# else
-		// Simple interpolation and rebuild the basis
+
+		// Interpolating the orientation could be done:
+		// by lerp+normalization: Bad (can end up over-extrapolating in extreme cases)
+		// by the double reflection method: Bad, too complicated/ slow
+		// by Simple interpolation and rebuild the basis: Good enough
 		auto n1 = normals[i];
 		auto n2 = normals[i + 1];
 		auto nn = n1 * (1-t) + n2 * t;
 		binorm = normalized(cross(tan, nn));
 		norm = cross(binorm, tan);
-#endif
 
 		auto tw1 = twistVals[i];
 		auto tw2 = twistVals[i + 1];
 		twist = tw1 * (1 - t) + tw2 * t;
 		scl = Point(1.0, 1.0, 1.0); // TODO
 	}
+
+	// By here I've already figured out if the params are extrapolating off either end
+	// AND I've taken care of the floating point weirdness
+	//void matricesAtParams(Float rawT, Vector &tan, Vector &norm, Vector &binorm, Point &tran, Point &scl, Float &twist, const VectorArray &normals, const VectorArray &binormals) const {
+	void matricesAtParams(
+			std::vector<Float> segTs, VectorArray &norms, VectorArray &binorms, PointArray &trans,
+			PointArray &scls, std::vector<Float> &twists, const VectorArray &normals, const VectorArray &binormals
+		) const {
+
+		// It's a little confusing, but I'm repurposing segTs for
+		// all the different param types from the single version
+		// so I don't have to reallocate memory
+		std::vector<Float> ts;
+		std::vector<size_t> segIdxs;
+		Float len = getLength();
+		for (auto &segT : segTs){
+			segT *= len;
+		}
+
+		linearIndex(segTs, sampleLengths, ts, segIdxs);
+
+		for (size_t i=0; i<ts.size(); ++i){
+			Float segT = (ts[i] + segIdxs[i]) / lutSteps;
+
+			tran = compute(segT);
+			tan = normalized(tangent(segT));
+
+			auto n1 = normals[segIdxs[i]];
+			auto n2 = normals[segIdxs[i] + 1];
+			auto nn = n1 * (1-t) + n2 * t;
+			binorm = normalized(cross(tan, nn));
+			norm = cross(binorm, tan);
+
+			auto tw1 = twistVals[segIdxs[i]];
+			auto tw2 = twistVals[segIdxs[i] + 1];
+			twist = tw1 * (1 - t) + tw2 * t;
+			scl = Point(1.0, 1.0, 1.0);
+
+			norms.push_back(norm);
+			binorms.push_back(binorm);
+			trans.push_back(tran);
+			scls.push_back(scl);
+			twists.push_back(twist);
+		}
+	}
+
+	void matricesAtPreParams() const {
+		/*
+		tran = (normalized(tangents[0]) * lenT) + points[0];
+		tan = tangents[0];
+		norm = normals[0];
+		binorm = binormals[0];
+		twist = twistVals[0];
+		scl = Point(1.0, 1.0, 1.0);
+		return;
+		*/
+	}
+
+	void matricesAtPostParams() const {
+		/*
+		tran = (normalized(tangents[size(tangents) - 1]) * (lenT - getLength())) + points[size(points) - 1];
+		tan = tangents[size(tangents) - 1];
+		norm = normals[size(normals) - 1];
+		binorm = tbinormals[size(tbinormals) - 1];
+		twist = twistVals[twistVals.size() - 1];
+		scl = Point(1.0, 1.0, 1.0);
+		return;
+		*/
+	}
+
+
+
 
 	void applyTwist(Float startAngle, Float endAngle){ // inRadians
 		resize(tnormals, size(rnormals));
@@ -886,8 +957,6 @@ public:
 			segments[segIdx]->rawMatrixAtParam(segT, tan, norm, binorm, tran, scl, twist);
 	}
 
-
-
 	void matricesAtParams(const std::vector<Float> &params,
 			VectorArray &tans, VectorArray &norms, VectorArray &binorms,
 			PointArray &trans, PointArray &scls, std::vector<Float> &twists, bool twisted) {
@@ -904,26 +973,14 @@ public:
 		twists.resize(params.size());
 
 		for (size_t i = 0; i < params.size(); ++i) {
-			size_t segIdx = segIdxs[i];
-			Float segT = segTs[i];
-
-			Vector tan, norm, binorm;
-			Point tran, scl;
-			Float twist;
-
 			if (twisted) {
-				segments[segIdx]->twistedMatrixAtParam(segT, tan, norm, binorm, tran, scl, twist);
+				segments[segIdxs[i]]->twistedMatrixAtParam(segTs[i], tans[i], norms[i], binorms[i], trans[i], scls[i], twists[i]);
 			}
 			else {
-				segments[segIdx]->rawMatrixAtParam(segT, tan, norm, binorm, tran, scl, twist);
+				segments[segIdxs[i]]->rawMatrixAtParam(segTs[i], tans[i], norms[i], binorms[i], trans[i], scls[i], twists[i]);
 			}
-	
 		}
-
 	}
-
-
-
 
 	void solveTwist() {
 		// Get a running value of the lengths
