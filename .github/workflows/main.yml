@@ -52,13 +52,13 @@ jobs:
 
       - name: Get Maya Devkit
         id: get-devkit
-        uses: tbttfox/mayaModuleActions/getMayaDevkit@master
+        uses: blurstudio/mayaModuleActions/getMayaDevkit@v1
         with:
           maya: ${{ matrix.maya }}
           update: ${{ matrix.update }}
 
       - name: Build
-        uses: tbttfox/mayaModuleActions/mesonBuild@master
+        uses: blurstudio/mayaModuleActions/mesonBuild@v1
         with:
           setup-args: >
             -Dmaya:maya_version=${{ matrix.maya }}
@@ -87,7 +87,7 @@ jobs:
           fallback: 0.0.1
 
       - name: Package
-        uses: tbttfox/mayaModuleActions/packageMayaModule@master
+        uses: blurstudio/mayaModuleActions/packageMayaModule@v1
         with: 
           module-name: TwistSpline
           folder-list: scripts icons
